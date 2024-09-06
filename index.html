@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D OBJ Viewer</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { margin: 0; background-color: black;}
+        canvas { display: block; }
+        /* Position the toggle switch and buttons */
+        #controlsContainer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+        .btn-container {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row flex-nowrap">
+            <div class="col-auto col-md-3 col-xl-2 px-sm-2 px-0 bg-dark">
+                <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100 mb-3">
+                    
+                    <label>CMIS 3234</label>
+                    <label>202262</label>
+                    <div class="btn-container" id="modelButtonsContainer">
+                           
+                        
+                    </div>
+                    <button id="animateButton" class="btn btn-secondary mb-3" style="width: 100%;">Start Animation</button>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="toggleSwitch">
+                        <label class="form-check-label" for="toggleSwitch">Advanced Settings</label>
+                    </div>
+                    
+                    
+                    <div class="btn-container" id="inputButtonsContainer" style="display: none;">
+                        <input type="file" id="zipFileInput" accept=".zip" class="btn btn-primary" style="width: 100%;"/>
+                    </div>
+                       
+                    </ul>
+                    <hr>
+                </div>
+            </div>
+            <div class="col py-3">
+                <div id="controlsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Switch and Buttons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/MTLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.6/dat.gui.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let scene, camera, renderer, controls, gui, currentModel = null;
+        let isAnimating = false;
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.querySelector('.col.py-3').appendChild(renderer.domElement); 
+
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(0, 1, 0).normalize();
+            scene.add(directionalLight);
+
+            // Orbit controls for rotating and zooming the camera
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.1;
+            controls.enableZoom = true;
+
+            // Set the initial camera position
+            camera.position.z = 10;
+
+            // Handle window resizing
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            });
+
+            // Initialize GUI
+            gui = new dat.GUI();
+
+            // Toggle switch functionality to show/hide GUI
+            const toggleSwitch = document.getElementById('toggleSwitch');
+            const inputButtonsContainer = document.getElementById('inputButtonsContainer');
+            toggleSwitch.addEventListener('change', function () {
+                if (toggleSwitch.checked) {
+                    gui.domElement.style.display = 'block';
+                    inputButtonsContainer.style.display = 'block';
+                } else {
+                    gui.domElement.style.display = 'none';
+                    inputButtonsContainer.style.display = 'none';
+                }
+            });
+
+            const animateButton = document.getElementById('animateButton');
+    animateButton.addEventListener('click', () => {
+        isAnimating = !isAnimating;
+        animateButton.textContent = isAnimating ? 'Stop Animation' : 'Start Animation';
+    });
+            // Load default ZIP file on page load
+            loadDefaultZip();
+
+            // Setup ZIP file upload
+            document.getElementById('zipFileInput').addEventListener('change', function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        const zip = new JSZip();
+                        zip.loadAsync(event.target.result)
+                            .then(function (contents) {
+                                handleZipContents(contents);
+                            });
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+            });
+
+            // Animate the scene
+            animate();
+        }
+
+        function loadDefaultZip() {
+            const defaultZipUrl = 'Octocopter.zip';
+            fetch(defaultZipUrl)
+                .then(response => response.arrayBuffer())
+                .then(data => {
+                    const zip = new JSZip();
+                    return zip.loadAsync(data);
+                })
+                .then(contents => {
+                    handleZipContents(contents);
+                })
+                .catch(error => {
+                    console.error('Error loading default ZIP file:', error);
+                });
+        }
+
+        function handleZipContents(zip) {
+            const objFiles = [];
+            const mtlFiles = [];
+            const modelButtonsContainer = document.getElementById('modelButtonsContainer');
+            modelButtonsContainer.innerHTML = ''; // Clear existing buttons
+
+            // Find all .obj and .mtl files in the zip
+            zip.forEach((relativePath, zipEntry) => {
+                if (zipEntry.name.endsWith('.obj')) {
+                    objFiles.push(zipEntry);
+                } else if (zipEntry.name.endsWith('.mtl')) {
+                    mtlFiles.push(zipEntry);
+                }
+            });
+
+            // For each .obj file, find its matching .mtl file and create a button to load it
+            objFiles.forEach(objFile => {
+                const mtlFile = mtlFiles.find(mtl => mtl.name.replace('.mtl', '') === objFile.name.replace('.obj', ''));
+                if (mtlFile) {
+                    createModelButton(objFile, mtlFile, modelButtonsContainer);
+                }
+            });
+        }
+
+        function createModelButton(objFile, mtlFile, container) {
+            const button = document.createElement('button');
+            const fileNameWithoutExtension = objFile.name.replace('.obj', '');
+
+            button.className = 'btn btn-primary mb-3';
+            button.textContent = `View ${fileNameWithoutExtension}`;
+            button.style.marginRight = '10px';
+            button.style.marginBottom = '10px';
+            button.style.width = '100%';
+            button.addEventListener('click', () => {
+                Promise.all([objFile.async('text'), mtlFile.async('text')])
+                    .then(([objText, mtlText]) => {
+                        console.log(`Loading model: ${objFile.name} with ${mtlFile.name}`);
+                        loadModelFromText(objText, mtlText);
+                    });
+            });
+            container.appendChild(button);
+        }
+
+        function loadModelFromText(objText, mtlText) {
+            // Clear the current model from the scene
+            if (currentModel) {
+                scene.remove(currentModel);
+                currentModel = null;
+            }
+
+            // Load MTL (materials) from text
+            const mtlLoader = new THREE.MTLLoader();
+            try {
+                const materials = mtlLoader.parse(mtlText);
+                materials.preload();
+
+                // Load OBJ with the preloaded materials
+                const objLoader = new THREE.OBJLoader();
+                objLoader.setMaterials(materials);
+                try {
+                    const object = objLoader.parse(objText);
+                    if (object) {
+                        object.position.set(0, 0, 0);
+                        object.scale.set(1, 1, 1);
+                        scene.add(object);
+                        currentModel = object;  // Set the current model
+
+                        // Add GUI controls for customizations
+                        const modelFolder = gui.addFolder('Model Settings');
+                        modelFolder.add(object.position, 'x', -10, 10).name('Position X');
+                        modelFolder.add(object.position, 'y', -10, 10).name('Position Y');
+                        modelFolder.add(object.position, 'z', -10, 10).name('Position Z');
+                        modelFolder.add(object.scale, 'x', 0.1, 3).name('Scale X');
+                        modelFolder.add(object.scale, 'y', 0.1, 3).name('Scale Y');
+                        modelFolder.add(object.scale, 'z', 0.1, 3).name('Scale Z');
+                        modelFolder.open();
+
+                        // Wireframe toggle
+                        const material = object.children[0].material;
+                        const toggleWireframe = { Wireframe: false };
+                        modelFolder.add(toggleWireframe, 'Wireframe').onChange(function (value) {
+                            material.wireframe = value;
+                        });
+                    } else {
+                        console.error('Failed to parse OBJ file.');
+                    }
+                } catch (error) {
+                    console.error('Error parsing OBJ file:', error);
+                }
+            } catch (error) {
+                console.error('Error parsing MTL file:', error);
+            }
+        }
+
+        function animate() {
+    requestAnimationFrame(animate);
+
+    if (isAnimating) {
+        if (currentModel) {
+            currentModel.rotation.y += 0.01;
+        }
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+        // Initialize the scene
+        init();
+    </script>
+</body>
+</html>
