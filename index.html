@@ -205,55 +205,58 @@
         }
 
         function loadModelFromText(objText, mtlText) {
-            // Clear the current model from the scene
-            if (currentModel) {
-                scene.remove(currentModel);
-                currentModel = null;
+    // Clear the current model from the scene
+    if (currentModel) {
+        scene.remove(currentModel);
+        currentModel = null;
+    }
+
+    // Remove the previous GUI controls
+    if (gui) {
+        gui.destroy();
+        gui = new dat.GUI();
+    }
+
+    // Load MTL (materials) from text
+    const mtlLoader = new THREE.MTLLoader();
+    try {
+        const materials = mtlLoader.parse(mtlText);
+        materials.preload();
+
+        // Load OBJ with the preloaded materials
+        const objLoader = new THREE.OBJLoader();
+        objLoader.setMaterials(materials);
+        try {
+            const object = objLoader.parse(objText);
+            if (object) {
+                object.position.set(0, 0, 0);
+                object.scale.set(1, 1, 1);
+                scene.add(object);
+                currentModel = object;  // Set the current model
+
+                // Add GUI controls for customizations
+                const modelFolder = gui.addFolder('Model Settings');
+                modelFolder.add(object.position, 'x', -10, 10).name('Position X');
+                modelFolder.add(object.position, 'y', -10, 10).name('Position Y');
+                modelFolder.add(object.position, 'z', -10, 10).name('Position Z');
+                modelFolder.add(object.scale, 'x', 0.1, 3).name('Scale X');
+                modelFolder.add(object.scale, 'y', 0.1, 3).name('Scale Y');
+                modelFolder.add(object.scale, 'z', 0.1, 3).name('Scale Z');
+                modelFolder.open();
+
+                // Wireframe toggle
+               
+            } else {
+                console.error('Failed to parse OBJ file.');
             }
-
-            // Load MTL (materials) from text
-            const mtlLoader = new THREE.MTLLoader();
-            try {
-                const materials = mtlLoader.parse(mtlText);
-                materials.preload();
-
-                // Load OBJ with the preloaded materials
-                const objLoader = new THREE.OBJLoader();
-                objLoader.setMaterials(materials);
-                try {
-                    const object = objLoader.parse(objText);
-                    if (object) {
-                        object.position.set(0, 0, 0);
-                        object.scale.set(1, 1, 1);
-                        scene.add(object);
-                        currentModel = object;  // Set the current model
-
-                        // Add GUI controls for customizations
-                        const modelFolder = gui.addFolder('Model Settings');
-                        modelFolder.add(object.position, 'x', -10, 10).name('Position X');
-                        modelFolder.add(object.position, 'y', -10, 10).name('Position Y');
-                        modelFolder.add(object.position, 'z', -10, 10).name('Position Z');
-                        modelFolder.add(object.scale, 'x', 0.1, 3).name('Scale X');
-                        modelFolder.add(object.scale, 'y', 0.1, 3).name('Scale Y');
-                        modelFolder.add(object.scale, 'z', 0.1, 3).name('Scale Z');
-                        modelFolder.open();
-
-                        // Wireframe toggle
-                        const material = object.children[0].material;
-                        const toggleWireframe = { Wireframe: false };
-                        modelFolder.add(toggleWireframe, 'Wireframe').onChange(function (value) {
-                            material.wireframe = value;
-                        });
-                    } else {
-                        console.error('Failed to parse OBJ file.');
-                    }
-                } catch (error) {
-                    console.error('Error parsing OBJ file:', error);
-                }
-            } catch (error) {
-                console.error('Error parsing MTL file:', error);
-            }
+        } catch (error) {
+            console.error('Error parsing OBJ file:', error);
         }
+    } catch (error) {
+        console.error('Error parsing MTL file:', error);
+    }
+}
+
 
         function animate() {
     requestAnimationFrame(animate);
